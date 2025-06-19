@@ -6,7 +6,7 @@
 #define MOTOR_IN1_PIN 11
 #define MOTOR_IN2_PIN 12
 #define PWM_RESOLUTION 255
-#define RAMP_INTERVAL 10 
+#define RAMP_INTERVAL_MOTOR 10 //change interval (ms)
 
 class Motor {
 private:
@@ -61,7 +61,7 @@ public:
   void update() {
     unsigned long currentTime = millis();
     
-    if (currentTime - prevUpdateTime >= RAMP_INTERVAL) {
+    if (currentTime - prevUpdateTime >= RAMP_INTERVAL_MOTOR) {
       if (currentSpeed < targetSpeed) {
         currentSpeed++;
         applySpeed(currentSpeed);
