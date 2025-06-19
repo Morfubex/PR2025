@@ -22,7 +22,7 @@ PressureData readVacuumSensor() {
 
   PressureData data;
   data.pressure_kPa = ((voltage - Vmin) / (Vmax - Vmin)) * 100.0 - 100.0;
-  data.pressure_Pa = data.pressure_Pa * 1000.0;
+  data.pressure_Pa = data.pressure_kPa * 1000.0;
   data.pressure_MPa = data.pressure_kPa / 1000.0;
   return data;
 }
