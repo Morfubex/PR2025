@@ -6,7 +6,7 @@ void setup() {
 }
 
 void loop() {
-  PressureData result = readVacuumSensor();
+  PressureData result = readVacuumSensor(A3);
 
   static unsigned long lastPrintTime = 0;
   if (millis() - lastPrintTime > 1000) {

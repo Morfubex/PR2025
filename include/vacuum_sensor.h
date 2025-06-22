@@ -3,8 +3,6 @@
 
 #include <Arduino.h>
 
-#define VACUUM_SENSOR_PIN A3
-
 const float Vcc = 5.0;
 const float Vmin = 0.5;
 const float Vmax = 4.5;
@@ -15,8 +13,8 @@ struct PressureData {
   float pressure_MPa;
 };
 
-PressureData readVacuumSensor() {
-  int raw = analogRead(VACUUM_SENSOR_PIN);
+PressureData readVacuumSensor(uint8_t pin) {
+  int raw = analogRead(pin);
   float voltage = raw * Vcc / 1023.0;
   voltage = constrain(voltage, Vmin, Vmax);
 
