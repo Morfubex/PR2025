@@ -1,5 +1,5 @@
-#ifndef ULTRA_SIMPLE_SERVO_H
-#define ULTRA_SIMPLE_SERVO_H
+#ifndef SERVO_CONTROL_H
+#define SERVO_CONTROL_H
 
 #include <Arduino.h>
 
