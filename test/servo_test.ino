@@ -1,8 +1,8 @@
 #include "Arduino.h"
 #include "servo_control.h"
 
-UltraSimpleServo servo1;
-UltraSimpleServo servo2;
+Servo servo1;
+Servo servo2;
 
 void setup() {
     servo1.attach(5);

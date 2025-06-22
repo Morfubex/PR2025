@@ -10,7 +10,7 @@
 #define STEP_ANGLE 1
 
 
-class UltraSimpleServo {
+class Servo {
 private:
     byte pin;
     int currentAngle;
@@ -28,7 +28,7 @@ private:
     }
 
 public:
-    UltraSimpleServo() : pin(255), currentAngle(90), targetAngle(90), 
+    Servo() : pin(255), currentAngle(90), targetAngle(90), 
                         lastPulseTime(0), lastMoveTime(0), stepDelayMs(20) {}
 
     void attach(byte pinNumber) {
