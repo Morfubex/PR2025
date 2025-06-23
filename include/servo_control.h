@@ -4,7 +4,8 @@
 #include <Arduino.h>
 
 #define MIN_ANGLE 0
-#define MAX_ANGLE 180
+#define MAX_ANGLE 270
+
 #define MIN_SPEED 5
 #define MAX_SPEED 100
 #define STEP_ANGLE 1
@@ -34,8 +35,8 @@ public:
     void attach(byte pinNumber) {
         pin = pinNumber;
         pinMode(pin, OUTPUT);
-        currentAngle = 90;
-        targetAngle = 90;
+        currentAngle = MAX_ANGLE/2;
+        targetAngle = MAX_ANGLE/2;
         sendPulse();
     }
 
@@ -49,7 +50,7 @@ public:
     }
 
     void smoothWrite(int angle) {
-        targetAngle = constrain(angle, MIN_ANGLE, MAX_ANGLE);
+        targetAngle = constrain(angle, MIN_ANGLE, MAX_ANGLE) + MAX_ANGLE/2;
         lastMoveTime = millis();
     }
 
