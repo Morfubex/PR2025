@@ -16,9 +16,8 @@ bool readButtonPress(uint8_t pin) {
     }
 
     if ((millis() - lastDebounceTime) > debounceDelay && currentState == LOW) {
-        // Ждём отпускания кнопки, чтобы не вызывать повторно
         while (digitalRead(pin) == LOW);
-        delay(10); // Защита от повторного дребезга
+        delay(10);
         return true;
     }
 

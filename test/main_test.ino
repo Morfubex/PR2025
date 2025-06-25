@@ -1,84 +1,127 @@
 #include <Arduino.h>
-#include <Wire.h>
-#include <LiquidCrystal_I2C.h>
 #include "button.h"
 #include "motor.h"
 #include "servo_control.h"
 #include "vacuum_sensor.h"
+#include "GyverOLED.h"
 
 #define BUTTON_PIN 8
 #define LED_PIN 7
 #define VALVE_PIN 4
 #define VACUUM_SENSOR_PIN A3
+#define SERVO_A_PIN 5
+#define SERVO_B_PIN 6
+
+#define MAX_PRESSURE -50 //target pressure
+#define MIN_PRESSURE 0 //atmospheric pressure
+#define OP_PRESSURE -30 //operating pressure
+
+#define DEG_TIME 15UL*1000UL //degassing time
+#define BtoA_TIME 15UL*1000UL //draining from B to A time
+#define MIXING_TIME 15UL*1000UL
+#define CASTING_TIME 15UL*1000UL //draining from A to mold
+
+#define SERVO_A_SPEED 10
+#define SERVO_B_SPEED 30
+#define MAX_MIXER_SPEED 100
 
 Motor mixer;
-Servo servo1, servo2;
-LiquidCrystal_I2C lcd(0x27, 16, 2);
+Servo servoA, servoB;
+GyverOLED<SSD1306_128x64, OLED_NO_BUFFER> oled; 
 
 unsigned long cycleStartTime = 0;
 bool cycleRunning = false;
-int currentStep = 0;
+unsigned long currentStep = 0;
 unsigned long stepStartTime = 0;
+unsigned long PulseStart = 0;
+unsigned long lastUpdate = 0;
+const unsigned int PulseDuration = 100;
 bool valveState = false;
+bool servoflag = 0;
+bool valveflag = 0;
+bool Pulsing = false;
 
 String currentLine1 = "";
 String currentLine2 = "";
-unsigned long lastUpdate = 0;
+
+void Pulse() {
+  if (!Pulsing) {
+    digitalWrite(VALVE_PIN, HIGH);
+    PulseStart = millis();
+    Pulsing = true;
+  }
+}
+
+void updateValvePulse() {
+  if (Pulsing && millis() - PulseStart >= PulseDuration) {
+    digitalWrite(VALVE_PIN, LOW);
+    Pulsing = false;
+  }
+}
 
 void displayStatus(String action, float pressure_kPa, unsigned long elapsedTimeSec) {
   static unsigned long lastUpdate = 0;
   static String currentLine1 = "";
   static String currentLine2 = "";
+  static String currentLine3 = "";
   
-  if (millis() - lastUpdate < 1000) return;
+  if (millis() - lastUpdate < 100) return;
 
   String newLine1 = action.substring(0, 16);
-  String newLine2 = "P:" + String(pressure_kPa, 1) + "kPa T:" + String(elapsedTimeSec) + "s";
-  
-  while (newLine1.length() < 16) newLine1 += " ";
-  while (newLine2.length() < 16) newLine2 += " ";
+  String newLine2 = "P:" + String(pressure_kPa, 1);
+  String newLine3 = "T:" + String(elapsedTimeSec) + "s";
 
   if (newLine1 != currentLine1) {
-    lcd.setCursor(0, 0);
-    lcd.print(newLine1);
+    oled.setCursor(0, 0);
+    oled.print(newLine1);
+    oled.print("      ");
     currentLine1 = newLine1;
   }
   
   if (newLine2 != currentLine2) {
-    lcd.setCursor(0, 1);
-    lcd.print(newLine2);
+    oled.setCursor(0, 3);
+    oled.print(newLine2);
+    oled.print("      ");
     currentLine2 = newLine2;
+  }
+
+  if (newLine3 != currentLine3) {
+    oled.setCursor(0, 5);
+    oled.print(newLine3);
+    oled.print("      ");
+    currentLine3 = newLine3;
   }
   
   lastUpdate = millis();
 }
 
 void setup() {
-  lcd.init(); lcd.backlight(); Wire.setClock(100000);
-  Serial.begin(9600);
+  oled.init();
+  oled.clear();
+  oled.setScale(2);
+  oled.home();
 
   pinMode(BUTTON_PIN, INPUT_PULLUP);
   pinMode(VALVE_PIN, OUTPUT);
-  digitalWrite(VALVE_PIN, HIGH);
 
   mixer.begin();
-  servo1.attach(5); servo2.attach(6);
-  servo1.setSpeed(30); servo2.setSpeed(30);
+  servoA.attach(SERVO_A_PIN); servoB.attach(SERVO_B_PIN);
+  servoA.setSpeed(SERVO_A_SPEED); servoB.setSpeed(SERVO_B_SPEED);
   displayStatus("Waiting...", 0.0, 0);
 }
 
 void loop() {
-  mixer.update();
-  servo1.update(); servo2.update();
+  mixer.update(); servoA.update(); servoB.update(); updateValvePulse();
 
   PressureData data = readVacuumSensor(VACUUM_SENSOR_PIN);
 
   if (readButtonPress(BUTTON_PIN)) {
     if (cycleRunning) {
         cycleRunning = false;
-        mixer.stop();
         digitalWrite(LED_PIN, LOW);
-        digitalWrite(VALVE_PIN, HIGH);
+        mixer.stop();
+        servoA.smoothWrite(0);
+        servoB.smoothWrite(0);
         currentStep = 0;
     } else {
         cycleRunning = true;
@@ -86,7 +129,6 @@ void loop() {
         stepStartTime = millis();
         currentStep = 0;
     }
-    delay(300);
   }
 
   if (cycleRunning) {
@@ -95,65 +137,59 @@ void loop() {
     unsigned long totalElapsedSec = (millis() - cycleStartTime) / 1000;
 
     switch (currentStep) {
-      case 0: // Step 1
-        Serial.println(currentStep);
-        displayStatus("Cycle Start", data.pressure_kPa, totalElapsedSec);
+      case 0:
+        displayStatus("Start", data.pressure_kPa, totalElapsedSec);
         digitalWrite(LED_PIN, HIGH);
-        mixer.setSpeed(50);
+        mixer.setSpeed(MAX_MIXER_SPEED/2);
         stepStartTime = millis();
         currentStep = 10;
         break;
 
-      case 10: // Step 2
-        Serial.println(currentStep);
-        displayStatus("Servo1 to 20", data.pressure_kPa, totalElapsedSec);
-        servo1.smoothWrite(20);
+      case 10:
+        displayStatus("ServoA->20", data.pressure_kPa, totalElapsedSec);
+        servoA.smoothWrite(20);
         currentStep = 20;
         break;
 
-      case 20: // Step 3
-        Serial.println(currentStep);
-        displayStatus("Wait Pressure", data.pressure_kPa, totalElapsedSec);
-        if (data.pressure_kPa <= -15.0) {
+      case 20:
+        displayStatus("Vacuum->100", data.pressure_kPa, totalElapsedSec);
+        if (data.pressure_kPa <= MAX_PRESSURE) {
           digitalWrite(LED_PIN, LOW);
           stepStartTime = millis();
           currentStep = 30;
         }
         break;
 
-      case 30: // Step 4
-        Serial.println(currentStep);
-        displayStatus("Wait 6 min", data.pressure_kPa, totalElapsedSec);
-        if (elapsed >= 1UL * 60UL * 1000UL) {
-          servo1.smoothWrite(0);
-          servo2.smoothWrite(145);
+      case 30:
+        displayStatus("Degasing", data.pressure_kPa, totalElapsedSec);
+        if (elapsed >= DEG_TIME) {
+          servoA.smoothWrite(0);
+          servoB.smoothWrite(145);
           stepStartTime = millis();
           currentStep = 40;
         }
         break;
 
-      case 40: // Step 5
-        Serial.println(currentStep);
-        displayStatus("Servo2 Hold", data.pressure_kPa, totalElapsedSec);
-        if (elapsed >= 15000) {
-          servo2.smoothWrite(0);
-          mixer.setSpeed(100);
+      case 40:
+        displayStatus("Draining B", data.pressure_kPa, totalElapsedSec);
+        if (elapsed >= BtoA_TIME) {
+          servoB.smoothWrite(0);
+          mixer.setSpeed(MAX_MIXER_SPEED);
           stepStartTime = millis();
           currentStep = 50;
         }
         break;
 
-      case 50: // Step 6
-        Serial.println(currentStep);
-        displayStatus("Mix Loop", data.pressure_kPa, totalElapsedSec);
+      case 50:
+        displayStatus("Mixing", data.pressure_kPa, totalElapsedSec);
 
-        if (elapsed <= 45000) {
+        if (elapsed <= MIXING_TIME) {
           static bool positionFlag = false;
           static unsigned long lastSwitchTime = 0;
 
-          if (millis() - lastSwitchTime >= 2500) {  // каждые 5 секунд
+          if (millis() - lastSwitchTime >= 2500) {
             positionFlag = !positionFlag;
-            servo1.smoothWrite(positionFlag ? 0 : 45);
+            servoA.smoothWrite(positionFlag ? 0 : 45);
             lastSwitchTime = millis();
           }
         } else {
@@ -163,34 +199,40 @@ void loop() {
         }
         break;
 
-      case 60: // Step 7
-        Serial.println(currentStep);
-        displayStatus("Vent -80", data.pressure_kPa, totalElapsedSec);
-        digitalWrite(VALVE_PIN, LOW);
-        if (data.pressure_kPa <= -5.0) {
-          digitalWrite(VALVE_PIN, HIGH);
+      case 60:
+        displayStatus("Vacuum->80", data.pressure_kPa, totalElapsedSec);
+        if (valveflag == 0) {
+          Pulse();
+          valveflag = 1;
+        }
+        if (data.pressure_kPa <= OP_PRESSURE) {
+          Pulse();
           stepStartTime = millis();
           currentStep = 70;
         }
         break;
 
-      case 70: // Step 8
-        Serial.println(currentStep);
-        displayStatus("Dump Wait", data.pressure_kPa, totalElapsedSec);
-        servo1.smoothWrite(145);
-        if (elapsed >= 60000) {
-          servo1.smoothWrite(0);
+      case 70:
+        displayStatus("Casting", data.pressure_kPa, totalElapsedSec);
+        if (servoflag == 0) {
+          servoA.smoothWrite(145);
+          servoflag = 1;
+        }
+        if (elapsed >= CASTING_TIME) {
+          servoA.smoothWrite(0);
           stepStartTime = millis();
           currentStep = 80;
         }
         break;
 
-      case 80: // Step 9
-        Serial.println(currentStep);
-        displayStatus("To Atm", data.pressure_kPa, totalElapsedSec);
-        digitalWrite(VALVE_PIN, LOW);
-        if (data.pressure_kPa >= 0.0 && elapsed > 30000) {
-          digitalWrite(VALVE_PIN, HIGH);
+      case 80:
+        displayStatus("Vaccum->0", data.pressure_kPa, totalElapsedSec);
+        if (valveflag == 1) {
+          Pulse();
+          valveflag = 0;
+        }
+        if (data.pressure_kPa >= MIN_PRESSURE && elapsed > 30000) {
+          Pulse();
           cycleRunning = false;
           currentStep = 0;
           displayStatus("Done", data.pressure_kPa, totalElapsedSec);
